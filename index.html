@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>极光聊天室</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --bg-color: #f3f4f6;
+            --chat-bg: #ffffff;
+            --self-bubble: #667eea;
+            --other-bubble: #f1f5f9;
+            --text-dark: #1f2937;
+            --text-light: #9ca3af;
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            background: var(--bg-color);
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* --- 主容器 (手机风格窗口) --- */
+        #app {
+            width: 100%;
+            max-width: 500px; /* 限制最大宽度，像手机APP */
+            height: 100%;
+            max-height: 900px;
+            background: var(--chat-bg);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        @media (min-width: 501px) {
+            #app { height: 90vh; border-radius: 24px; }
+        }
+
+        /* --- 顶部栏 --- */
+        header {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            z-index: 10;
+            position: absolute;
+            top: 0;
+            width: 100%;
+        }
+        
+        .header-title { font-weight: 700; color: #333; font-size: 1.1rem; display: flex; align-items: center; gap: 8px; }
+        .status-dot { width: 8px; height: 8px; background: #10b981; border-radius: 50%; }
+
+        .name-wrapper { background: #f3f4f6; border-radius: 20px; padding: 4px 10px; display: flex; align-items: center; }
+        .name-wrapper input { border: none; background: transparent; width: 80px; font-size: 0.85rem; outline: none; color: #555; text-align: right; }
+        .name-icon { font-size: 1rem; margin-left: 5px; cursor: pointer; }
+
+        /* --- 消息区域 --- */
+        #messages {
+            flex: 1;
+            padding: 80px 20px 20px 20px; /* 顶部留出 header 高度 */
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            scroll-behavior: smooth;
+            background-image: radial-gradient(#e5e7eb 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        
+        /* 隐藏滚动条但保留功能 */
+        #messages::-webkit-scrollbar { width: 6px; }
+        #messages::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 3px; }
+
+        /* --- 消息气泡 --- */
+        .message-row { display: flex; flex-direction: column; max-width: 85%; position: relative; }
+        .message-row.self { align-self: flex-end; align-items: flex-end; }
+        .message-row.other { align-self: flex-start; align-items: flex-start; }
+
+        /* 进场动画 */
+        @keyframes slideUpFade {
+            from { opacity: 0; transform: translateY(15px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .message-row { animation: slideUpFade 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+        .meta { font-size: 0.7rem; color: #9ca3af; margin-bottom: 4px; padding: 0 4px; }
+        
+        .bubble {
+            padding: 12px 16px;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            position: relative;
+            word-wrap: break-word;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        /* 自己的样式 */
+        .self .bubble {
+            background: var(--primary-gradient);
+            color: white;
+            border-radius: 18px 18px 4px 18px;
+        }
+
+        /* 别人的样式 */
+        .other .bubble {
+            background: var(--other-bubble);
+            color: var(--text-dark);
+            border-radius: 18px 18px 18px 4px;
+        }
+
+        /* 贴纸/表情包 样式 */
+        .sticker-img { font-size: 3rem; line-height: 1; margin: 5px 0; transition: transform 0.2s; cursor: pointer; }
+        .sticker-img:hover { transform: scale(1.1); }
+        .self .sticker-img { text-align: right; }
+
+        /* 系统消息 */
+        .system-msg {
+            align-self: center;
+            font-size: 0.75rem;
+            color: #9ca3af;
+            background: rgba(255,255,255,0.8);
+            padding: 4px 12px;
+            border-radius: 12px;
+            margin: 10px 0;
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+
+        /* --- 底部输入区域 --- */
+        .input-area {
+            background: white;
+            padding: 15px;
+            box-shadow: 0 -5px 20px rgba(0,0,0,0.03);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            position: relative;
+            z-index: 20;
+        }
+
+        .emoji-btn {
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: transform 0.2s;
+            user-select: none;
+            padding: 5px;
+        }
+        .emoji-btn:hover { transform: scale(1.1); }
+        .emoji-btn:active { transform: scale(0.9); }
+
+        form { flex: 1; display: flex; gap: 10px; }
+        
+        input#m {
+            flex: 1;
+            padding: 12px 15px;
+            border: 2px solid #f3f4f6;
+            border-radius: 24px;
+            outline: none;
+            font-size: 1rem;
+            transition: all 0.3s;
+            background: #f9fafb;
+        }
+        input#m:focus { border-color: #667eea; background: white; }
+
+        button.send-btn {
+            background: var(--primary-gradient);
+            color: white;
+            border: none;
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 10px rgba(102, 126, 234, 0.4);
+            transition: transform 0.1s;
+        }
+        button.send-btn:active { transform: scale(0.9); }
+        button.send-btn svg { width: 20px; height: 20px; fill: white; margin-left: 2px; }
+
+        /* --- 正在输入提示 --- */
+        #typing-indicator {
+            position: absolute;
+            bottom: 80px;
+            left: 20px;
+            font-size: 0.75rem;
+            color: #667eea;
+            background: rgba(255,255,255,0.9);
+            padding: 5px 10px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            display: none; /* 默认隐藏 */
+            align-items: center;
+            gap: 5px;
+            animation: fadeIn 0.3s;
+        }
+        @keyframes fadeIn { from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);} }
+        
+        /* 动画点 */
+        .dots span { width: 4px; height: 4px; background: #667eea; display: inline-block; border-radius: 50%; animation: bounce 1.4s infinite; }
+        .dots span:nth-child(2) { animation-delay: 0.2s; }
+        .dots span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes bounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
+
+        /* --- 表情包面板 --- */
+        #emoji-picker {
+            position: absolute;
+            bottom: 80px;
+            left: 15px;
+            width: 280px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(20px) scale(0.9);
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 30;
+        }
+        
+        #emoji-picker.active {
+            opacity: 1;
+            pointer-events: all;
+            transform: translateY(0) scale(1);
+        }
+
+        .picker-emoji {
+            font-size: 1.8rem;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .picker-emoji:hover { transform: scale(1.3); }
+
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <header>
+        <div class="header-title">
+            <div class="status-dot"></div> 极光 Chat
+        </div>
+        <div class="name-wrapper">
+            <input type="text" id="usernameInput" value="加载中...">
+            <span class="name-icon" onclick="changeName()" title="点击确认修改">✏️</span>
+        </div>
+    </header>
+
+    <div id="messages"></div>
+
+    <div id="typing-indicator">
+        <span id="typing-text"></span>
+        <div class="dots"><span></span><span></span><span></span></div>
+    </div>
+
+    <div id="emoji-picker">
+        </div>
+
+    <div class="input-area">
+        <div class="emoji-btn" id="toggle-emoji">😃</div>
+        <form id="chat-form">
+            <input id="m" autocomplete="off" placeholder="发消息..." />
+            <button class="send-btn">
+                <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
+            </button>
+        </form>
+    </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+    const socket = io();
+    
+    // DOM 元素
+    const messages = document.getElementById('messages');
+    const form = document.getElementById('chat-form');
+    const input = document.getElementById('m');
+    const typingDiv = document.getElementById('typing-indicator');
+    const typingText = document.getElementById('typing-text');
+    const nameInput = document.getElementById('usernameInput');
+    const emojiPicker = document.getElementById('emoji-picker');
+    const toggleEmojiBtn = document.getElementById('toggle-emoji');
+
+    let typingTimeout;
+
+    // --- 1. 表情包/贴纸功能 ---
+    // 定义一组“贴纸” (实际上是大尺寸 Emoji)
+    const stickers = [
+        '👻', '🤖', '💩', '👽', '🦄', 
+        '😂', '😍', '😭', '😡', '👍',
+        '🎉', '🔥', '❤️', '👀', '🚀',
+        '🍕', '🍺', '🐶', '🐱', '💯'
+    ];
+
+    // 渲染表情面板
+    stickers.forEach(emoji => {
+        const span = document.createElement('div');
+        span.textContent = emoji;
+        span.className = 'picker-emoji';
+        span.onclick = () => sendSticker(emoji);
+        emojiPicker.appendChild(span);
+    });
+
+    // 切换面板显示/隐藏
+    toggleEmojiBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        emojiPicker.classList.toggle('active');
+    });
+
+    // 点击其他地方关闭面板
+    document.addEventListener('click', (e) => {
+        if (!emojiPicker.contains(e.target) && e.target !== toggleEmojiBtn) {
+            emojiPicker.classList.remove('active');
+        }
+    });
+
+    // 发送贴纸函数
+    function sendSticker(emoji) {
+        socket.emit('chat message', { content: emoji, type: 'sticker' });
+        emojiPicker.classList.remove('active');
+    }
+
+    // --- 2. 普通消息发送 ---
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        if (input.value) {
+            socket.emit('chat message', { content: input.value, type: 'text' });
+            socket.emit('stopTyping');
+            input.value = '';
+        }
+    });
+
+    // --- 3. 输入状态逻辑 ---
+    input.addEventListener('input', () => {
+        socket.emit('typing');
+        clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => socket.emit('stopTyping'), 1000);
+    });
+
+    // --- 4. 修改名字 ---
+    function changeName() {
+        const newName = nameInput.value.trim();
+        if(newName) {
+            socket.emit('changeName', newName);
+            // 简单闪烁效果提示成功
+            nameInput.style.color = '#10b981';
+            setTimeout(() => nameInput.style.color = '#555', 500);
+        }
+    }
+    
+    // 回车也可以确认改名
+    nameInput.addEventListener('keypress', (e) => {
+        if(e.key === 'Enter') changeName();
+    });
+
+    // --- 5. Socket 事件处理 ---
+
+    socket.on('system', (data) => {
+        if(data.name) nameInput.value = data.name; // 只有在初始化或改名成功时更新输入框
+        
+        const div = document.createElement('div');
+        div.className = 'system-msg';
+        div.textContent = data.text;
+        appendMessage(div);
+    });
+
+    socket.on('chat message', (msg) => {
+        const row = document.createElement('div');
+        row.className = `message-row ${msg.id === socket.id ? 'self' : 'other'}`;
+        
+        // 元数据 (名字 + IP + 时间)
+        const metaText = msg.id === socket.id ? '' : `${msg.name} • IP:${msg.ip}`;
+        const metaDiv = metaText ? `<div class="meta">${metaText}</div>` : '';
+
+        // 内容渲染 (区分文本和贴纸)
+        let contentHtml = '';
+        if (msg.type === 'sticker') {
+            contentHtml = `<div class="sticker-img">${msg.content}</div>`;
+        } else {
+            contentHtml = `<div class="bubble">${msg.content}</div>`;
+        }
+
+        row.innerHTML = metaDiv + contentHtml;
+        appendMessage(row);
+    });
+
+    socket.on('displayTyping', (data) => {
+        typingDiv.style.display = 'flex';
+        typingText.textContent = `${data.name} 正在输入`;
+        scrollToBottom();
+    });
+
+    socket.on('hideTyping', () => {
+        typingDiv.style.display = 'none';
+    });
+
+    function appendMessage(element) {
+        messages.appendChild(element);
+        scrollToBottom();
+    }
+
+    function scrollToBottom() {
+        messages.scrollTop = messages.scrollHeight;
+    }
+</script>
+</body>
+</html>
